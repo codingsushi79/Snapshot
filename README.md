@@ -22,6 +22,12 @@ irm https://raw.githubusercontent.com/codingsushi79/Snapshot/main/install.ps1 | 
 python3 -m pip install --user git+https://github.com/codingsushi79/Snapshot.git
 ```
 
+**From PyPI** (once published):
+
+```bash
+pip install web-snapshot-cli
+```
+
 Then run:
 
 ```bash
@@ -33,6 +39,8 @@ snapshot https://example.com ./mirror
 
 ```bash
 # With pipx (recommended for CLI tools)
+pipx install web-snapshot-cli
+# or from git:
 pipx install git+https://github.com/codingsushi79/Snapshot.git
 
 # From a local clone

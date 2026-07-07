@@ -1,3 +1,5 @@
+# PyPI project: web-snapshot-cli
+# Trusted publisher: owner codingsushi79, repo Snapshot, workflow publish.yml, env pypi
 name: Publish to PyPI
 
 on:

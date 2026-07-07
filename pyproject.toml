@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "snapshot-cli"
+name = "web-snapshot-cli"
 version = "0.1.0"
 description = "Take offline snapshots of any website and restore them locally"
 readme = "README.md"
