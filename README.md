@@ -4,25 +4,7 @@ Take a fast offline copy of any public website, then serve it locally.
 
 ## Install
 
-**One-liner (macOS / Linux / WSL):**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/codingsushi79/Snapshot/main/install.sh | bash
-```
-
-**One-liner (Windows PowerShell):**
-
-```powershell
-irm https://raw.githubusercontent.com/codingsushi79/Snapshot/main/install.ps1 | iex
-```
-
-**Universal fallback** (requires Python 3.10+):
-
-```bash
-python3 -m pip install --user git+https://github.com/codingsushi79/Snapshot.git
-```
-
-**From PyPI** (once published):
+Requires Python 3.10+.
 
 ```bash
 pip install web-snapshot-cli
@@ -33,23 +15,6 @@ Then run:
 ```bash
 snapshot https://example.com ./mirror
 ```
-
-<details>
-<summary>Other install methods</summary>
-
-```bash
-# With pipx (recommended for CLI tools)
-pipx install web-snapshot-cli
-# or from git:
-pipx install git+https://github.com/codingsushi79/Snapshot.git
-
-# From a local clone
-git clone https://github.com/codingsushi79/Snapshot.git
-cd Snapshot
-pip install -e .
-```
-
-</details>
 
 ## Usage
 
