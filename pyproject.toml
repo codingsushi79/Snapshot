@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "web-snapshot-cli"
-version = "1.0.0"
+version = "1.1.0"
 description = "Take offline snapshots of any website and restore them locally"
 readme = "README.md"
 license = "MIT"
