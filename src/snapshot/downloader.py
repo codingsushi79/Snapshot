@@ -39,7 +39,7 @@ class SnapshotOptions:
     timeout: float = 15.0
     concurrency: int = 16
     same_origin_only: bool = True
-    user_agent: str = "web-snapshot-cli/0.1 (+https://github.com/codingsushi79/Snapshot)"
+    user_agent: str = "web-snapshot-cli/0.2 (+https://github.com/codingsushi79/Snapshot)"
     cookies: list[str] = field(default_factory=list)
     headers: list[str] = field(default_factory=list)
     include_patterns: list[str] = field(default_factory=list)
