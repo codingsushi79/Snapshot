@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from bs4 import BeautifulSoup
 
@@ -93,3 +94,29 @@ async def test_snapshot_skips_soft_404_page():
     assert result.pages_saved == 0
     assert result.pages_skipped == 1
     assert "https://example.com/" not in engine._seen_pages
+    assert result.errors == []
+
+
+@pytest.mark.asyncio
+async def test_snapshot_skips_http_404_without_error():
+    async def fake_fetch(url: str):
+        response = MagicMock()
+        response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "not found",
+            request=MagicMock(),
+            response=MagicMock(status_code=404),
+        )
+        raise response.raise_for_status.side_effect
+
+    engine = SnapshotEngine(
+        "https://example.com/",
+        Path("/tmp/http-404-test"),
+        SnapshotOptions(crawl=False, download_assets=False),
+    )
+
+    with patch.object(engine, "_fetch", new=AsyncMock(side_effect=fake_fetch)):
+        result = await engine.run()
+
+    assert result.pages_saved == 0
+    assert result.pages_skipped == 1
+    assert result.errors == []

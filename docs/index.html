@@ -65,7 +65,7 @@
       <div class="field snapshot-only">
         <label for="wordlists">Extra wordlists (one per line)</label>
         <textarea id="wordlists" placeholder="common&#10;large&#10;/path/to/SecLists/Discovery/Web-Content/common.txt"></textarea>
-        <div class="hint">Builtin names: <code>common</code>, <code>large</code>. --gobuster uses both by default. Any page whose full text contains <code>404</code> is skipped, even on HTTP 200.</div>
+        <div class="hint">Builtin names: <code>common</code>, <code>large</code>. Probes follow redirects and skip any page whose text contains <code>404</code> or returns HTTP 404.</div>
       </div>
       <div class="field snapshot-only">
         <label for="wordlistExt">Wordlist extensions</label>

@@ -40,30 +40,53 @@ def test_load_builtin_common():
 @pytest.mark.asyncio
 async def test_probe_url_rejects_soft_404():
     client = MagicMock(spec=httpx.AsyncClient)
-    head_response = MagicMock()
-    head_response.status_code = 200
-    get_response = MagicMock()
-    get_response.status_code = 200
-    get_response.headers = {"content-type": "text/html"}
-    get_response.url = "https://example.com/missing"
-    get_response.text = (
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {"content-type": "text/html"}
+    response.url = "https://example.com/missing"
+    response.text = (
         "<html><head><title>404 Not Found</title></head><body><h1>404</h1></body></html>"
     )
-    client.request = AsyncMock(side_effect=[head_response, get_response])
+    client.get = AsyncMock(return_value=response)
 
     assert await _probe_url(client, "https://example.com/missing") is False
+    client.get.assert_awaited_once_with("https://example.com/missing", follow_redirects=True)
 
 
 @pytest.mark.asyncio
 async def test_probe_url_accepts_valid_page():
     client = MagicMock(spec=httpx.AsyncClient)
-    head_response = MagicMock()
-    head_response.status_code = 200
-    get_response = MagicMock()
-    get_response.status_code = 200
-    get_response.headers = {"content-type": "text/html"}
-    get_response.url = "https://example.com/about"
-    get_response.text = "<html><head><title>About</title></head><body><h1>About</h1></body></html>"
-    client.request = AsyncMock(side_effect=[head_response, get_response])
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {"content-type": "text/html"}
+    response.url = "https://example.com/about"
+    response.text = "<html><head><title>About</title></head><body><h1>About</h1></body></html>"
+    client.get = AsyncMock(return_value=response)
 
     assert await _probe_url(client, "https://example.com/about") is True
+
+
+@pytest.mark.asyncio
+async def test_probe_url_rejects_hard_404_after_redirect():
+    client = MagicMock(spec=httpx.AsyncClient)
+    response = MagicMock()
+    response.status_code = 404
+    response.headers = {"content-type": "text/html"}
+    response.url = "https://example.com/missing"
+    response.text = "<html><body>missing</body></html>"
+    client.get = AsyncMock(return_value=response)
+
+    assert await _probe_url(client, "https://example.com/missing/") is False
+
+
+@pytest.mark.asyncio
+async def test_probe_url_does_not_count_redirect_without_final_page():
+    client = MagicMock(spec=httpx.AsyncClient)
+    response = MagicMock()
+    response.status_code = 308
+    response.headers = {"content-type": "text/html"}
+    response.url = "https://example.com/old/"
+    response.text = ""
+    client.get = AsyncMock(return_value=response)
+
+    assert await _probe_url(client, "https://example.com/old/") is False

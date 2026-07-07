@@ -12,7 +12,7 @@ from snapshot.crawl_policy import RobotsChecker
 from snapshot.utils import is_not_found_page
 
 BUILTIN_WORDLISTS = ("common", "large")
-HIT_STATUS = {200, 201, 204, 301, 302, 307, 308, 401, 403}
+FOUND_STATUS = {200, 201, 204, 401, 403}
 
 
 def resolve_wordlist_sources(
@@ -157,16 +157,11 @@ def normalize_probe_url(base: str, path: str) -> str | None:
 
 
 async def _probe_url(client: httpx.AsyncClient, url: str) -> bool:
-    for method in ("HEAD", "GET"):
-        try:
-            response = await client.request(method, url, follow_redirects=False)
-        except httpx.RequestError:
-            return False
-        if response.status_code not in HIT_STATUS:
-            if response.status_code == 405 and method == "HEAD":
-                continue
-            return False
-        if method == "HEAD":
-            continue
-        return not is_not_found_page(response)
-    return False
+    """Probe a URL the same way page snapshots are fetched."""
+    try:
+        response = await client.get(url, follow_redirects=True)
+    except httpx.RequestError:
+        return False
+    if response.status_code not in FOUND_STATUS:
+        return False
+    return not is_not_found_page(response)

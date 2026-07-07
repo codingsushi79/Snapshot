@@ -364,6 +364,13 @@ class SnapshotEngine:
 
         try:
             response = await self._fetch(url)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {404, 410}:
+                self._pages_skipped += 1
+                self._log(f"skip (404): {url}")
+                return []
+            self._errors.append(f"{url}: {exc}")
+            return []
         except Exception as exc:  # noqa: BLE001
             self._errors.append(f"{url}: {exc}")
             return []
