@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>snapshot — command generator</title>
+  <meta name="description" content="Build snapshot CLI commands for offline website mirrors." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>snapshot command generator</h1>
+    <p>
+      Build install and run commands for
+      <a href="https://github.com/codingsushi79/Snapshot">web-snapshot-cli</a>
+    </p>
+  </header>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="mode-tabs">
+        <button type="button" class="mode-tab active" data-mode="snapshot">Snapshot</button>
+        <button type="button" class="mode-tab" data-mode="restore">Restore</button>
+      </div>
+
+      <div class="presets snapshot-only">
+        <button type="button" class="preset-btn" data-preset="quick">Single page</button>
+        <button type="button" class="preset-btn" data-preset="crawl">Crawl</button>
+        <button type="button" class="preset-btn" data-preset="full">Full + gobuster</button>
+      </div>
+
+      <h2>Target</h2>
+      <div class="field snapshot-only">
+        <label for="url">Website URL</label>
+        <input type="url" id="url" placeholder="https://example.com" value="https://example.com" />
+      </div>
+      <div class="field">
+        <label for="outputDir">Output directory</label>
+        <input type="text" id="outputDir" placeholder="./mirror or ~/sites/example" value="./mirror" />
+        <div class="hint">Where files are saved (snapshot) or served from (restore)</div>
+      </div>
+
+      <hr class="section-divider snapshot-only" />
+
+      <h2 class="snapshot-only">Discovery</h2>
+      <div class="check-grid snapshot-only">
+        <label class="check-item">
+          <input type="checkbox" id="crawl" />
+          <div>--crawl<span>Follow same-origin links</span></div>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="gobuster" />
+          <div>--gobuster<span>Bundled common + large wordlists</span></div>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="sitemap" />
+          <div>--sitemap<span>Seed from sitemap.xml / robots.txt</span></div>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="resume" />
+          <div>--resume<span>Skip already-downloaded files</span></div>
+        </label>
+      </div>
+
+      <div class="field snapshot-only">
+        <label for="wordlists">Extra wordlists (one per line)</label>
+        <textarea id="wordlists" placeholder="common&#10;large&#10;/path/to/SecLists/Discovery/Web-Content/common.txt"></textarea>
+        <div class="hint">Builtin names: <code>common</code>, <code>large</code>. --gobuster uses both by default.</div>
+      </div>
+      <div class="field snapshot-only">
+        <label for="wordlistExt">Wordlist extensions</label>
+        <input type="text" id="wordlistExt" placeholder="html,php,asp,aspx" />
+      </div>
+
+      <hr class="section-divider snapshot-only" />
+
+      <h2 class="snapshot-only">Crawl limits</h2>
+      <div class="row snapshot-only">
+        <div class="field">
+          <label for="maxPages">Max pages</label>
+          <input type="number" id="maxPages" value="50" min="1" />
+        </div>
+        <div class="field">
+          <label for="depth">Depth</label>
+          <input type="number" id="depth" value="3" min="1" />
+        </div>
+        <div class="field">
+          <label for="concurrency">Concurrency</label>
+          <input type="number" id="concurrency" value="16" min="1" />
+        </div>
+        <div class="field">
+          <label for="crawlDelay">Crawl delay (sec)</label>
+          <input type="number" id="crawlDelay" value="0" min="0" step="0.1" />
+        </div>
+        <div class="field">
+          <label for="timeout">Timeout (sec)</label>
+          <input type="number" id="timeout" value="15" min="1" step="0.5" />
+        </div>
+        <div class="field">
+          <label for="lang">Output format</label>
+          <select id="lang">
+            <option value="html">html</option>
+            <option value="md">md</option>
+          </select>
+        </div>
+      </div>
+
+      <hr class="section-divider snapshot-only" />
+
+      <h2 class="snapshot-only">Filters &amp; auth</h2>
+      <div class="field snapshot-only">
+        <label for="includes">Include globs (one per line)</label>
+        <textarea id="includes" placeholder="/docs/*&#10;/blog/*"></textarea>
+      </div>
+      <div class="field snapshot-only">
+        <label for="excludes">Exclude globs (one per line)</label>
+        <textarea id="excludes" placeholder="/admin/*&#10;/drafts/*"></textarea>
+      </div>
+      <div class="field snapshot-only">
+        <label for="cookies">Cookies (name=value, one per line)</label>
+        <textarea id="cookies" placeholder="session=abc123"></textarea>
+      </div>
+      <div class="field snapshot-only">
+        <label for="headers">Headers (Name: Value, one per line)</label>
+        <textarea id="headers" placeholder="Authorization: Bearer TOKEN"></textarea>
+      </div>
+      <div class="field snapshot-only">
+        <label for="userAgent">Custom User-Agent</label>
+        <input type="text" id="userAgent" placeholder="Leave blank for default" />
+      </div>
+
+      <hr class="section-divider" />
+
+      <h2>Options</h2>
+      <div class="check-grid snapshot-only">
+        <label class="check-item">
+          <input type="checkbox" id="robots" checked />
+          <div>--robots<span>Respect robots.txt</span></div>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="sameOrigin" checked />
+          <div>--same-origin<span>Same origin only</span></div>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="noAssets" />
+          <div>--no-assets<span>Skip CSS/JS/images</span></div>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="verbose" />
+          <div>--verbose<span>Detailed logs</span></div>
+        </label>
+        <label class="check-item">
+          <input type="checkbox" id="dryRun" />
+          <div>--dry-run<span>Don't write files</span></div>
+        </label>
+      </div>
+      <div class="row restore-only hidden">
+        <div class="field">
+          <label for="port">Port</label>
+          <input type="number" id="port" value="8080" min="1" />
+        </div>
+        <div class="field">
+          <label for="host">Host</label>
+          <input type="text" id="host" value="127.0.0.1" />
+        </div>
+      </div>
+      <label class="check-item restore-only hidden">
+        <input type="checkbox" id="noOpen" />
+        <div>--no-open<span>Don't open browser</span></div>
+      </label>
+    </div>
+
+    <div class="panel output-panel">
+      <h2>Generated command</h2>
+      <div class="command-box">
+        <code id="command">snapshot https://example.com ./mirror</code>
+        <button type="button" class="copy-btn" id="copyBtn">Copy</button>
+      </div>
+
+      <div class="install-line">
+        Install first:
+        <code>pip install web-snapshot-cli</code>
+      </div>
+
+      <div class="install-line" id="restoreHint">
+        After snapshot, restore locally:
+        <code id="restoreCommand">snapshot -restore ./mirror</code>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+  <a href="https://github.com/codingsushi79/Snapshot">GitHub</a>
+  ·
+  <a href="https://pypi.org/project/web-snapshot-cli/">PyPI</a>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

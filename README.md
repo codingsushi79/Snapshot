@@ -16,6 +16,8 @@ Then run:
 snapshot https://example.com ./mirror
 ```
 
+**Command generator:** [codingsushi79.github.io/Snapshot](https://codingsushi79.github.io/Snapshot/)
+
 ## Usage
 
 ### Snapshot a single page
