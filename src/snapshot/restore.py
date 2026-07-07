@@ -12,7 +12,9 @@ from snapshot.manifest import SnapshotManifest
 from snapshot.utils import page_local_path
 
 
-def serve_snapshot(snapshot_dir: Path, host: str = "127.0.0.1", port: int = 8080, open_browser: bool = True) -> None:
+def serve_snapshot(
+    snapshot_dir: Path, host: str = "127.0.0.1", port: int = 8080, open_browser: bool = True
+) -> None:
     """Serve a snapshot directory over HTTP."""
     root = SnapshotManifest.find_root(snapshot_dir)
     manifest = SnapshotManifest.load(root)
@@ -24,7 +26,7 @@ def serve_snapshot(snapshot_dir: Path, host: str = "127.0.0.1", port: int = 8080
         manifest=manifest,
     )
 
-    with _find_server(host, port, handler) as httpd:
+    with _FindServer(host, port, handler) as httpd:
         actual_port = httpd.server_address[1]
         url = f"http://{host}:{actual_port}/"
         print(f"snapshot restore: serving {content_root}")
@@ -99,7 +101,7 @@ class _SnapshotHandler(http.server.SimpleHTTPRequestHandler):
         return
 
 
-class _find_server:
+class _FindServer:
     def __init__(self, host: str, port: int, handler):
         self.host = host
         self.port = port

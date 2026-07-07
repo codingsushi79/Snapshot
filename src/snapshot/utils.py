@@ -14,9 +14,27 @@ SRCSET_ATTRS = ("srcset", "data-srcset")
 # Tags treated as HTML pages when crawled.
 PAGE_EXTENSIONS = {".html", ".htm", ".xhtml", ""}
 ASSET_EXTENSIONS = {
-    ".css", ".js", ".mjs", ".json", ".xml", ".svg", ".png", ".jpg", ".jpeg",
-    ".gif", ".webp", ".avif", ".ico", ".woff", ".woff2", ".ttf", ".eot",
-    ".mp4", ".webm", ".mp3", ".pdf",
+    ".css",
+    ".js",
+    ".mjs",
+    ".json",
+    ".xml",
+    ".svg",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".avif",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".mp4",
+    ".webm",
+    ".mp3",
+    ".pdf",
 }
 
 SKIP_SCHEMES = {"mailto", "tel", "javascript", "data", "blob", "about", "file"}
@@ -105,9 +123,7 @@ def _guess_extension(url: str) -> str | None:
     ext = PurePosixPath(path).suffix.lower()
     if ext:
         return ext
-    guessed = mimetypes.guess_extension(
-        mimetypes.guess_type(path)[0] or "application/octet-stream"
-    )
+    guessed = mimetypes.guess_extension(mimetypes.guess_type(path)[0] or "application/octet-stream")
     return guessed
 
 

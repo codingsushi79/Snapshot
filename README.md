@@ -63,6 +63,38 @@ snapshot --crawl https://docs.example.com ./docs --max-pages 200 --depth 4
 snapshot https://example.com ./mirror --lang md
 ```
 
+### Crawl with filters and politeness
+
+```bash
+snapshot --crawl --include '/docs/*' --exclude '/docs/drafts/*' \
+  --crawl-delay 1 --robots https://docs.example.com ./docs
+```
+
+### Authenticated pages
+
+```bash
+snapshot --cookie session=abc123 --header "Authorization: Bearer TOKEN" \
+  https://app.example.com ./mirror
+```
+
+### Sitemap-based crawl
+
+```bash
+snapshot --crawl --sitemap https://example.com ./mirror --max-pages 500
+```
+
+### Resume an interrupted snapshot
+
+```bash
+snapshot --resume --crawl https://example.com ./mirror
+```
+
+### Dry run (no writes)
+
+```bash
+snapshot --dry-run --verbose --crawl https://example.com ./mirror
+```
+
 ### Extra args (positional)
 
 Any `key=value` pairs after the output directory are merged into options:
@@ -94,6 +126,18 @@ snapshot -restore ./mirror --port 3000 --no-open
 | `--no-assets` | Skip CSS, JS, images, fonts |
 | `--timeout` | HTTP timeout in seconds (default: 15) |
 | `--concurrency` | Parallel downloads (default: 16) |
+| `--same-origin` / `--no-same-origin` | Restrict crawl to same origin (default: on) |
+| `--user-agent` | Custom User-Agent header |
+| `--cookie` | Cookie as `name=value` (repeatable) |
+| `--header` | Extra HTTP header (repeatable) |
+| `--include` | Only fetch URLs matching glob (repeatable) |
+| `--exclude` | Skip URLs matching glob (repeatable) |
+| `--robots` / `--no-robots` | Respect robots.txt (default: on) |
+| `--crawl-delay` | Seconds to wait after each request (default: 0) |
+| `--sitemap` | Seed crawl from sitemap.xml |
+| `--resume` | Skip pages/assets already saved |
+| `--verbose`, `-v` | Detailed log output |
+| `--dry-run` | Fetch without writing files |
 | `-restore DIR` | Serve a saved snapshot from `DIR` |
 | `--port` | Port for restore (default: 8080) |
 | `--host` | Host for restore (default: 127.0.0.1) |

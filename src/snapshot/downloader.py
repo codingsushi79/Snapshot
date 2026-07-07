@@ -8,11 +8,17 @@ from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
+from markdownify import markdownify
 
-from snapshot.manifest import SnapshotManifest
+from snapshot.crawl_policy import (
+    RobotsChecker,
+    discover_sitemap_urls,
+    url_matches_filters,
+)
+from snapshot.manifest import MANIFEST_NAME, SnapshotManifest
 from snapshot.utils import (
-    URL_ATTRS,
     SRCSET_ATTRS,
+    URL_ATTRS,
     normalize_url,
     page_local_path,
     parse_srcset,
@@ -33,13 +39,25 @@ class SnapshotOptions:
     timeout: float = 15.0
     concurrency: int = 16
     same_origin_only: bool = True
-    user_agent: str = "snapshot-cli/0.1 (+https://github.com/snapshot-cli/snapshot)"
+    user_agent: str = "snapshot-cli/0.1 (+https://github.com/codingsushi79/Snapshot)"
+    cookies: list[str] = field(default_factory=list)
+    headers: list[str] = field(default_factory=list)
+    include_patterns: list[str] = field(default_factory=list)
+    exclude_patterns: list[str] = field(default_factory=list)
+    respect_robots: bool = True
+    crawl_delay: float = 0.0
+    use_sitemap: bool = False
+    resume: bool = False
+    verbose: bool = False
+    dry_run: bool = False
 
 
 @dataclass
 class SnapshotResult:
     pages_saved: int = 0
     assets_saved: int = 0
+    pages_skipped: int = 0
+    assets_skipped: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -54,16 +72,30 @@ class SnapshotEngine:
         self._url_to_path: dict[str, Path] = {}
         self._errors: list[str] = []
         self._sem: asyncio.Semaphore | None = None
+        self._robots = RobotsChecker(options.user_agent, options.respect_robots)
+        self._pages_skipped = 0
+        self._assets_skipped = 0
+        self._log_fn: Callable[[str], None] | None = None
 
-    async def run(self, progress: Callable[[str], None] | None = None) -> SnapshotResult:
+    async def run(
+        self,
+        progress: Callable[[str], None] | None = None,
+        log: Callable[[str], None] | None = None,
+    ) -> SnapshotResult:
+        self._log_fn = log
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self._sem = asyncio.Semaphore(self.options.concurrency)
+        self._load_resume_state()
+
+        client_headers = self._build_headers()
+        client_cookies = self._build_cookies()
 
         limits = httpx.Limits(max_connections=self.options.concurrency * 2)
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=self.options.timeout,
-            headers={"User-Agent": self.options.user_agent},
+            headers=client_headers,
+            cookies=client_cookies,
             limits=limits,
         ) as client:
             self._client = client
@@ -72,34 +104,109 @@ class SnapshotEngine:
             else:
                 await self._snapshot_page(self.root_url, depth=0, progress=progress)
 
-        manifest = SnapshotManifest(
-            root_url=self.root_url,
-            output_dir=str(self.output_dir),
-            pages=sorted(self._seen_pages),
-            assets=sorted(self._seen_assets),
-            options={
-                "crawl": self.options.crawl,
-                "max_pages": self.options.max_pages,
-                "max_depth": self.options.max_depth,
-                "lang": self.options.lang,
-                "download_assets": self.options.download_assets,
-            },
-        )
-        manifest.save(self.output_dir)
+        if not self.options.dry_run:
+            manifest = SnapshotManifest(
+                root_url=self.root_url,
+                output_dir=str(self.output_dir),
+                pages=sorted(self._seen_pages),
+                assets=sorted(self._seen_assets),
+                options=self._manifest_options(),
+            )
+            manifest.save(self.output_dir)
 
         return SnapshotResult(
             pages_saved=len(self._seen_pages),
             assets_saved=len(self._seen_assets),
+            pages_skipped=self._pages_skipped,
+            assets_skipped=self._assets_skipped,
             errors=self._errors,
         )
 
-    async def _crawl(
-        self,
-        progress: Callable[[str], None] | None,
-    ) -> None:
+    def _manifest_options(self) -> dict:
+        return {
+            "crawl": self.options.crawl,
+            "max_pages": self.options.max_pages,
+            "max_depth": self.options.max_depth,
+            "lang": self.options.lang,
+            "download_assets": self.options.download_assets,
+            "same_origin_only": self.options.same_origin_only,
+            "respect_robots": self.options.respect_robots,
+            "crawl_delay": self.options.crawl_delay,
+            "use_sitemap": self.options.use_sitemap,
+        }
+
+    def _build_headers(self) -> dict[str, str]:
+        headers = {"User-Agent": self.options.user_agent}
+        for item in self.options.headers:
+            if ":" not in item:
+                continue
+            name, value = item.split(":", 1)
+            headers[name.strip()] = value.strip()
+        return headers
+
+    def _build_cookies(self) -> dict[str, str]:
+        cookies: dict[str, str] = {}
+        for item in self.options.cookies:
+            if "=" not in item:
+                continue
+            name, value = item.split("=", 1)
+            cookies[name.strip()] = value.strip()
+        return cookies
+
+    def _load_resume_state(self) -> None:
+        if not self.options.resume:
+            return
+        manifest_path = self.output_dir / MANIFEST_NAME
+        if not manifest_path.exists():
+            self._log("resume: no existing manifest, starting fresh")
+            return
+
+        manifest = SnapshotManifest.load(self.output_dir)
+        page_ext = ".md" if self.options.lang == "md" else ".html"
+        for page_url in manifest.pages:
+            local_path = page_local_path(page_url, self.output_dir, lang=self.options.lang)
+            self._seen_pages.add(page_url)
+            self._url_to_path[page_url] = local_path
+        for asset_url in manifest.assets:
+            local_path = url_to_local_path(asset_url, self.output_dir, page_ext=page_ext)
+            self._seen_assets.add(asset_url)
+            self._url_to_path[asset_url] = local_path
+        self._log(
+            f"resume: loaded {len(manifest.pages)} pages, "
+            f"{len(manifest.assets)} assets from manifest"
+        )
+
+    def _log(self, message: str) -> None:
+        if self._log_fn:
+            self._log_fn(message)
+
+    def _url_allowed(self, url: str) -> bool:
+        if self.options.same_origin_only and not same_origin(self.root_url, url):
+            return False
+        return url_matches_filters(
+            url, self.options.include_patterns, self.options.exclude_patterns
+        )
+
+    async def _crawl(self, progress: Callable[[str], None] | None) -> None:
         queue: asyncio.Queue[tuple[str, int]] = asyncio.Queue()
-        self._queued_pages.add(self.root_url)
-        await queue.put((self.root_url, 0))
+        seed_urls = [self.root_url]
+
+        if self.options.use_sitemap:
+            if progress:
+                progress("fetching sitemap…")
+            sitemap_urls = await discover_sitemap_urls(self._client, self.root_url, self._robots)
+            self._log(f"sitemap: discovered {len(sitemap_urls)} URLs")
+            seed_urls.extend(sitemap_urls)
+
+        for url in seed_urls:
+            normalized = normalize_url(url)
+            if not normalized or not self._url_allowed(normalized):
+                continue
+            if normalized in self._queued_pages:
+                continue
+            self._queued_pages.add(normalized)
+            await queue.put((normalized, 0))
+
         workers = [
             asyncio.create_task(self._crawl_worker(queue, progress))
             for _ in range(min(self.options.concurrency, 8))
@@ -117,25 +224,55 @@ class SnapshotEngine:
         while True:
             url, depth = await queue.get()
             try:
-                if url in self._seen_pages:
-                    continue
                 if len(self._seen_pages) >= self.options.max_pages:
                     continue
                 if depth > self.options.max_depth:
                     continue
-                links = await self._snapshot_page(url, depth=depth, progress=progress)
+                if not self._url_allowed(url):
+                    self._log(f"skip (filter): {url}")
+                    continue
+                if not await self._robots.can_fetch(self._client, url):
+                    self._log(f"skip (robots.txt): {url}")
+                    continue
+
+                if url in self._seen_pages and self._page_exists(url):
+                    self._pages_skipped += 1
+                    self._log(f"skip (resume): {url}")
+                    links = self._links_from_saved_page(url)
+                else:
+                    links = await self._snapshot_page(url, depth=depth, progress=progress)
+
                 if depth < self.options.max_depth and links:
                     for link in links:
                         if len(self._seen_pages) >= self.options.max_pages:
                             break
                         if link in self._queued_pages:
                             continue
-                        if self.options.same_origin_only and not same_origin(self.root_url, link):
+                        if not self._url_allowed(link):
                             continue
                         self._queued_pages.add(link)
                         await queue.put((link, depth + 1))
             finally:
                 queue.task_done()
+
+    def _page_exists(self, url: str) -> bool:
+        local_path = self._url_to_path.get(url)
+        if local_path is None:
+            local_path = page_local_path(url, self.output_dir, lang=self.options.lang)
+        return local_path.exists()
+
+    def _links_from_saved_page(self, url: str) -> list[str]:
+        local_path = self._url_to_path.get(url) or page_local_path(
+            url, self.output_dir, lang=self.options.lang
+        )
+        if not local_path.exists():
+            return []
+        try:
+            html = local_path.read_text(encoding="utf-8")
+        except OSError:
+            return []
+        soup = BeautifulSoup(html, "html.parser")
+        return self._collect_page_links(soup, url)
 
     async def _snapshot_page(
         self,
@@ -143,10 +280,19 @@ class SnapshotEngine:
         depth: int,
         progress: Callable[[str], None] | None,
     ) -> list[str]:
-        if url in self._seen_pages:
+        if url in self._seen_pages and self._page_exists(url):
+            self._pages_skipped += 1
+            return self._links_from_saved_page(url)
+
+        if not self._url_allowed(url):
             return []
+        if not await self._robots.can_fetch(self._client, url):
+            self._log(f"skip (robots.txt): {url}")
+            return []
+
         if progress:
             progress(f"page {url}")
+        self._log(f"fetch: {url}")
 
         try:
             response = await self._fetch(url)
@@ -159,24 +305,30 @@ class SnapshotEngine:
         content_type = response.headers.get("content-type", "")
         local_path = page_local_path(url, self.output_dir, lang=self.options.lang)
         self._url_to_path[url] = local_path
-        local_path.parent.mkdir(parents=True, exist_ok=True)
 
         if "text/html" not in content_type and not url.endswith((".html", ".htm")):
-            local_path.write_bytes(response.content)
+            if not self.options.dry_run:
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                local_path.write_bytes(response.content)
+            else:
+                self._log(f"dry-run: would save {url} → {local_path}")
             return []
 
         soup = BeautifulSoup(response.text, "html.parser")
-
-        # Collect crawl targets before rewriting links to local paths.
         discovered = self._collect_page_links(soup, url)
 
         asset_urls = self._collect_asset_urls(soup, url)
         if self.options.download_assets:
             await asyncio.gather(*(self._download_asset(u) for u in asset_urls))
 
-        self._rewrite_html(soup, url, local_path)
-        body = self._render_page(soup)
-        local_path.write_text(body, encoding="utf-8")
+        if not self.options.dry_run:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            self._rewrite_html(soup, url, local_path)
+            body = self._render_page(soup)
+            local_path.write_text(body, encoding="utf-8")
+        else:
+            self._log(f"dry-run: would save page {url} → {local_path}")
+
         return discovered
 
     def _collect_asset_urls(self, soup: BeautifulSoup, page_url: str) -> set[str]:
@@ -223,10 +375,16 @@ class SnapshotEngine:
         local_path = url_to_local_path(url, self.output_dir)
         self._url_to_path[url] = local_path
         if local_path.exists():
+            self._assets_skipped += 1
+            self._log(f"skip (exists): {url}")
             return
+
+        self._log(f"asset: {url}")
         try:
-            async with self._sem:
-                response = await self._fetch(url)
+            response = await self._fetch(url)
+            if self.options.dry_run:
+                self._log(f"dry-run: would save asset {url} → {local_path}")
+                return
             local_path.parent.mkdir(parents=True, exist_ok=True)
             if url.endswith(".css") or "text/css" in response.headers.get("content-type", ""):
                 css = response.text
@@ -236,7 +394,6 @@ class SnapshotEngine:
                     lambda asset_url: self._css_mapper(asset_url, local_path),
                 )
                 local_path.write_text(css, encoding="utf-8")
-                # Pull nested assets referenced from CSS.
                 nested = self._extract_css_urls(css, url)
                 await asyncio.gather(*(self._download_asset(u) for u in nested))
             else:
@@ -308,34 +465,19 @@ class SnapshotEngine:
 
     def _html_to_markdown(self, soup: BeautifulSoup) -> str:
         title = soup.title.get_text(strip=True) if soup.title else "Untitled"
-        lines = [f"# {title}", ""]
         body = soup.body or soup
-        for element in body.find_all(["h1", "h2", "h3", "h4", "p", "li", "a", "pre", "code"]):
-            text = element.get_text(" ", strip=True)
-            if not text:
-                continue
-            name = element.name or ""
-            if name == "h1":
-                lines.append(f"# {text}")
-            elif name == "h2":
-                lines.append(f"## {text}")
-            elif name == "h3":
-                lines.append(f"### {text}")
-            elif name == "h4":
-                lines.append(f"#### {text}")
-            elif name == "li":
-                lines.append(f"- {text}")
-            elif name == "a" and element.get("href"):
-                lines.append(f"[{text}]({element['href']})")
-            elif name in {"pre", "code"}:
-                lines.append(f"```\n{text}\n```")
-            else:
-                lines.append(text)
-            lines.append("")
-        return "\n".join(lines).strip() + "\n"
+        markdown = markdownify(
+            str(body),
+            heading_style="ATX",
+            bullets="-",
+            strip=["script", "style", "noscript"],
+        ).strip()
+        return f"# {title}\n\n{markdown}\n"
 
     async def _fetch(self, url: str) -> httpx.Response:
         async with self._sem:
             response = await self._client.get(url)
             response.raise_for_status()
+            if self.options.crawl_delay > 0:
+                await asyncio.sleep(self.options.crawl_delay)
             return response

@@ -5,7 +5,6 @@ import pytest
 from bs4 import BeautifulSoup
 
 from snapshot.downloader import SnapshotEngine, SnapshotOptions
-from snapshot.utils import normalize_url
 
 
 def test_collect_page_links_uses_original_hrefs():
