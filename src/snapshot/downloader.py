@@ -13,6 +13,7 @@ from markdownify import markdownify
 from snapshot.crawl_policy import (
     RobotsChecker,
     discover_sitemap_urls,
+    parse_sitemap_xml,
     url_matches_filters,
 )
 from snapshot.manifest import MANIFEST_NAME, SnapshotManifest
@@ -27,6 +28,7 @@ from snapshot.utils import (
     same_origin,
     url_to_local_path,
 )
+from snapshot.wordlist import load_words, resolve_wordlist_sources, scan_wordlists
 
 
 @dataclass
@@ -39,7 +41,7 @@ class SnapshotOptions:
     timeout: float = 15.0
     concurrency: int = 16
     same_origin_only: bool = True
-    user_agent: str = "web-snapshot-cli/0.2 (+https://github.com/codingsushi79/Snapshot)"
+    user_agent: str = "web-snapshot-cli/1.0 (+https://github.com/codingsushi79/Snapshot)"
     cookies: list[str] = field(default_factory=list)
     headers: list[str] = field(default_factory=list)
     include_patterns: list[str] = field(default_factory=list)
@@ -47,6 +49,9 @@ class SnapshotOptions:
     respect_robots: bool = True
     crawl_delay: float = 0.0
     use_sitemap: bool = False
+    gobuster: bool = False
+    wordlists: list[str] = field(default_factory=list)
+    wordlist_extensions: list[str] = field(default_factory=list)
     resume: bool = False
     verbose: bool = False
     dry_run: bool = False
@@ -58,6 +63,7 @@ class SnapshotResult:
     assets_saved: int = 0
     pages_skipped: int = 0
     assets_skipped: int = 0
+    wordlist_hits: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -75,6 +81,7 @@ class SnapshotEngine:
         self._robots = RobotsChecker(options.user_agent, options.respect_robots)
         self._pages_skipped = 0
         self._assets_skipped = 0
+        self._wordlist_hits = 0
         self._log_fn: Callable[[str], None] | None = None
 
     async def run(
@@ -119,6 +126,7 @@ class SnapshotEngine:
             assets_saved=len(self._seen_assets),
             pages_skipped=self._pages_skipped,
             assets_skipped=self._assets_skipped,
+            wordlist_hits=self._wordlist_hits,
             errors=self._errors,
         )
 
@@ -133,6 +141,8 @@ class SnapshotEngine:
             "respect_robots": self.options.respect_robots,
             "crawl_delay": self.options.crawl_delay,
             "use_sitemap": self.options.use_sitemap,
+            "gobuster": self.options.gobuster,
+            "wordlists": self.options.wordlists,
         }
 
     def _build_headers(self) -> dict[str, str]:
@@ -198,6 +208,35 @@ class SnapshotEngine:
             self._log(f"sitemap: discovered {len(sitemap_urls)} URLs")
             seed_urls.extend(sitemap_urls)
 
+        wordlist_sources = resolve_wordlist_sources(
+            self.options.gobuster,
+            self.options.wordlists,
+        )
+        if wordlist_sources:
+            if progress:
+                progress("loading wordlists…")
+            words = load_words(wordlist_sources)
+            extensions = tuple(self.options.wordlist_extensions)
+            found = await scan_wordlists(
+                self._client,
+                self.root_url,
+                words,
+                extensions=extensions,
+                concurrency=self.options.concurrency,
+                crawl_delay=self.options.crawl_delay,
+                robots=self._robots,
+                url_allowed=self._url_allowed,
+                log=self._log,
+                progress=progress,
+            )
+            self._wordlist_hits = len(found)
+            extra = await self._expand_metadata_urls(found)
+            seed_urls.extend(found)
+            seed_urls.extend(extra)
+            self._log(
+                f"wordlist: {len(found)} paths, {len(extra)} extra URLs from robots/sitemaps"
+            )
+
         for url in seed_urls:
             normalized = normalize_url(url)
             if not normalized or not self._url_allowed(normalized):
@@ -215,6 +254,35 @@ class SnapshotEngine:
         for worker in workers:
             worker.cancel()
         await asyncio.gather(*workers, return_exceptions=True)
+
+    async def _expand_metadata_urls(self, discovered: list[str]) -> list[str]:
+        """Parse robots.txt and sitemap XML found during wordlist scanning."""
+        from snapshot.crawl_policy import parse_robots_sitemaps
+
+        extra: list[str] = []
+        seen: set[str] = set(discovered)
+        for url in discovered:
+            lower = url.lower()
+            try:
+                if lower.endswith("/robots.txt") or lower.endswith("robots.txt"):
+                    response = await self._client.get(url)
+                    if response.status_code == 200:
+                        for sitemap_url in parse_robots_sitemaps(response.text):
+                            if sitemap_url not in seen:
+                                seen.add(sitemap_url)
+                                extra.append(sitemap_url)
+                if "sitemap" in lower and (
+                    lower.endswith(".xml") or lower.endswith(".xml.gz") or lower.endswith(".txt")
+                ):
+                    response = await self._client.get(url)
+                    if response.status_code == 200:
+                        for page_url in parse_sitemap_xml(response.text):
+                            if page_url not in seen:
+                                seen.add(page_url)
+                                extra.append(page_url)
+            except Exception as exc:  # noqa: BLE001
+                self._errors.append(f"{url}: {exc}")
+        return extra
 
     async def _crawl_worker(
         self,

@@ -56,6 +56,16 @@ snapshot --cookie session=abc123 --header "Authorization: Bearer TOKEN" \
 snapshot --crawl --sitemap https://example.com ./mirror --max-pages 500
 ```
 
+### Gobuster-style path discovery
+
+Brute-force common paths (including `robots.txt`, `sitemap.xml`, admin panels, etc.) using bundled wordlists (`common` + ~18k `large` entries). Add your own SecLists/gobuster wordlists with `-w`:
+
+```bash
+snapshot --crawl --gobuster https://example.com ./mirror
+snapshot --crawl -w common -w large -w /path/to/SecLists/Discovery/Web-Content/common.txt URL ./out
+snapshot --crawl --gobuster --wordlist-ext html,php,asp URL ./out
+```
+
 ### Resume an interrupted snapshot
 
 ```bash
@@ -108,6 +118,9 @@ snapshot -restore ./mirror --port 3000 --no-open
 | `--robots` / `--no-robots` | Respect robots.txt (default: on) |
 | `--crawl-delay` | Seconds to wait after each request (default: 0) |
 | `--sitemap` | Seed crawl from sitemap.xml |
+| `--gobuster`, `-g` | Discover paths with bundled wordlists |
+| `--wordlist`, `-w` | Custom or builtin wordlist (`common`, `large`) |
+| `--wordlist-ext` | Extensions to append per word (`html,php`) |
 | `--resume` | Skip pages/assets already saved |
 | `--verbose`, `-v` | Detailed log output |
 | `--dry-run` | Fetch without writing files |

@@ -68,13 +68,20 @@ def _build_options(
     respect_robots: bool,
     crawl_delay: float,
     use_sitemap: bool,
+    gobuster: bool,
+    wordlists: tuple[str, ...],
+    wordlist_ext: str,
     resume: bool,
     verbose: bool,
     dry_run: bool,
 ) -> SnapshotOptions:
     default_ua = SnapshotOptions().user_agent
+    use_gobuster = gobuster or bool(extras.get("gobuster")) or bool(
+        wordlists or extras.get("wordlist")
+    )
+    crawl_enabled = crawl or bool(extras.get("crawl")) or use_gobuster
     return SnapshotOptions(
-        crawl=crawl or bool(extras.get("crawl")),
+        crawl=crawl_enabled,
         max_pages=int(extras.get("max_pages", max_pages)),
         max_depth=int(extras.get("depth", depth)),
         lang=str(extras.get("lang", lang)),
@@ -90,6 +97,9 @@ def _build_options(
         respect_robots=bool(extras.get("respect_robots", respect_robots)),
         crawl_delay=float(extras.get("crawl_delay", crawl_delay)),
         use_sitemap=use_sitemap or bool(extras.get("sitemap")),
+        gobuster=gobuster or bool(extras.get("gobuster")),
+        wordlists=list(wordlists) + _parse_list_value(extras.get("wordlist")),
+        wordlist_extensions=_parse_list_value(extras.get("wordlist_ext") or wordlist_ext),
         resume=resume or bool(extras.get("resume")),
         verbose=verbose or bool(extras.get("verbose")),
         dry_run=dry_run or bool(extras.get("dry_run")),
@@ -185,6 +195,23 @@ def _build_options(
     help="Seed crawl URLs from sitemap.xml and robots.txt Sitemap directives.",
 )
 @click.option(
+    "--gobuster",
+    "-g",
+    is_flag=True,
+    help="Brute-force discover paths using bundled wordlists (common + large).",
+)
+@click.option(
+    "--wordlist",
+    "-w",
+    multiple=True,
+    help="Wordlist file or builtin name: common, large (repeatable). Enables path scanning.",
+)
+@click.option(
+    "--wordlist-ext",
+    default="",
+    help="Comma-separated extensions to try with each word (e.g. html,php,asp).",
+)
+@click.option(
     "--resume",
     is_flag=True,
     help="Resume a previous snapshot; skip pages and assets already on disk.",
@@ -222,6 +249,9 @@ def main(
     robots: bool,
     crawl_delay: float,
     use_sitemap: bool,
+    gobuster: bool,
+    wordlist: tuple[str, ...],
+    wordlist_ext: str,
     resume: bool,
     verbose: bool,
     dry_run: bool,
@@ -235,7 +265,8 @@ def main(
     Examples:
       snapshot https://example.com ./mirror
       snapshot --crawl https://docs.example.com ./docs --max-pages=200
-      snapshot --crawl --sitemap --crawl-delay 1 https://example.com ./mirror
+      snapshot --crawl --gobuster --sitemap https://example.com ./mirror
+      snapshot --crawl -w common -w /path/to/SecLists.txt URL ./out
       snapshot --cookie session=abc --header "Authorization: Bearer x" URL ./out
       snapshot --crawl --include '/blog/*' --exclude '/blog/drafts/*' URL ./out
       snapshot --resume --crawl URL ./mirror
@@ -270,6 +301,9 @@ def main(
         respect_robots=robots,
         crawl_delay=crawl_delay,
         use_sitemap=use_sitemap,
+        gobuster=gobuster,
+        wordlists=wordlist,
+        wordlist_ext=wordlist_ext,
         resume=resume,
         verbose=verbose,
         dry_run=dry_run,
@@ -283,6 +317,9 @@ def main(
         console.print(f"  crawl: up to {options.max_pages} pages, depth {options.max_depth}")
     if options.use_sitemap:
         console.print("  sitemap: enabled")
+    if options.gobuster or options.wordlists:
+        sources = options.wordlists or ["common", "large"]
+        console.print(f"  wordlist: {', '.join(sources)}")
     if options.resume:
         console.print("  resume: enabled")
     console.print(f"  format: {options.lang}")
@@ -314,6 +351,8 @@ def main(
         console.print(
             f"  skipped: {result.pages_skipped} pages, {result.assets_skipped} assets (resume)"
         )
+    if result.wordlist_hits:
+        console.print(f"  wordlist: {result.wordlist_hits} paths discovered")
     if result.errors:
         console.print(f"[yellow]{len(result.errors)} errors[/yellow] (see below)")
         for err in result.errors[:10]:
