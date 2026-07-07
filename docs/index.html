@@ -50,7 +50,7 @@
         </label>
         <label class="check-item">
           <input type="checkbox" id="gobuster" />
-          <div>--gobuster<span>Bundled common + large wordlists</span></div>
+          <div>--gobuster<span>Bundled wordlists; soft 404 pages are filtered out</span></div>
         </label>
         <label class="check-item">
           <input type="checkbox" id="sitemap" />
@@ -65,7 +65,7 @@
       <div class="field snapshot-only">
         <label for="wordlists">Extra wordlists (one per line)</label>
         <textarea id="wordlists" placeholder="common&#10;large&#10;/path/to/SecLists/Discovery/Web-Content/common.txt"></textarea>
-        <div class="hint">Builtin names: <code>common</code>, <code>large</code>. --gobuster uses both by default.</div>
+        <div class="hint">Builtin names: <code>common</code>, <code>large</code>. --gobuster uses both by default. Pages that return 200 but show 404/not-found content are skipped.</div>
       </div>
       <div class="field snapshot-only">
         <label for="wordlistExt">Wordlist extensions</label>

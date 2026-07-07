@@ -168,7 +168,5 @@ async def _probe_url(client: httpx.AsyncClient, url: str) -> bool:
             return False
         if method == "HEAD":
             continue
-        if is_not_found_page(response):
-            return False
-        return True
+        return not is_not_found_page(response)
     return False
