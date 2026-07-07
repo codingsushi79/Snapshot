@@ -233,9 +233,7 @@ class SnapshotEngine:
             extra = await self._expand_metadata_urls(found)
             seed_urls.extend(found)
             seed_urls.extend(extra)
-            self._log(
-                f"wordlist: {len(found)} paths, {len(extra)} extra URLs from robots/sitemaps"
-            )
+            self._log(f"wordlist: {len(found)} paths, {len(extra)} extra URLs from robots/sitemaps")
 
         for url in seed_urls:
             normalized = normalize_url(url)

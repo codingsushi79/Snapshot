@@ -76,8 +76,8 @@ def _build_options(
     dry_run: bool,
 ) -> SnapshotOptions:
     default_ua = SnapshotOptions().user_agent
-    use_gobuster = gobuster or bool(extras.get("gobuster")) or bool(
-        wordlists or extras.get("wordlist")
+    use_gobuster = (
+        gobuster or bool(extras.get("gobuster")) or bool(wordlists or extras.get("wordlist"))
     )
     crawl_enabled = crawl or bool(extras.get("crawl")) or use_gobuster
     return SnapshotOptions(

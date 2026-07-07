@@ -49,9 +49,7 @@ def _load_source(source: Path | str) -> list[str]:
 
 
 def _load_builtin(name: str) -> list[str]:
-    text = resources.files("snapshot.wordlists").joinpath(f"{name}.txt").read_text(
-        encoding="utf-8"
-    )
+    text = resources.files("snapshot.wordlists").joinpath(f"{name}.txt").read_text(encoding="utf-8")
     return _parse_wordlist_text(text)
 
 
