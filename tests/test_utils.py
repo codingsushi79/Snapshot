@@ -1,7 +1,15 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from snapshot.utils import is_not_found_page, normalize_url, page_local_path, url_to_local_path
+from snapshot.utils import (
+    extract_css_urls,
+    extract_page_text,
+    is_not_found_page,
+    normalize_url,
+    page_local_path,
+    page_mentions_404,
+    url_to_local_path,
+)
 
 
 def _html_response(html: str, status_code: int = 200) -> MagicMock:
@@ -23,14 +31,46 @@ def test_is_not_found_page_soft_404_title():
     assert is_not_found_page(_html_response(html)) is True
 
 
-def test_is_not_found_page_soft_404_heading():
-    html = "<html><body><h1>Page Not Found</h1><p>Sorry</p></body></html>"
+def test_is_not_found_page_soft_404_anywhere_on_page():
+    filler = " ".join(["lorem ipsum"] * 200)
+    html = f"<html><body><main>{filler}</main><footer>Error 404</footer></body></html>"
+    assert is_not_found_page(_html_response(html)) is True
+
+
+def test_is_not_found_page_soft_404_in_meta():
+    html = '<html><head><meta name="description" content="404 page"></head><body>Hi</body></html>'
     assert is_not_found_page(_html_response(html)) is True
 
 
 def test_is_not_found_page_valid_page():
     html = "<html><head><title>About Us</title></head><body><h1>About</h1></body></html>"
     assert is_not_found_page(_html_response(html)) is False
+
+
+def test_extract_page_text_includes_meta_and_attributes():
+    html = (
+        "<html><head><title>Home</title>"
+        '<meta name="description" content="Welcome home"></head>'
+        '<body><img alt="Hero banner" src="/hero.png"><p>Hello</p></body></html>'
+    )
+    text = extract_page_text(html)
+    assert "Home" in text
+    assert "Welcome home" in text
+    assert "Hero banner" in text
+    assert "Hello" in text
+
+
+def test_page_mentions_404_case_insensitive():
+    assert page_mentions_404("error 404") is True
+    assert page_mentions_404("ERROR 404") is True
+    assert page_mentions_404("all good") is False
+
+
+def test_extract_css_urls_import_and_url():
+    css = '@import url("fonts/inter.css"); body { background: url("/bg.png"); }'
+    urls = extract_css_urls(css, "https://example.com/style.css")
+    assert "https://example.com/fonts/inter.css" in urls
+    assert "https://example.com/bg.png" in urls
 
 
 def test_normalize_url_drops_fragment():

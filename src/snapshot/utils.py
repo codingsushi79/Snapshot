@@ -12,8 +12,28 @@ if TYPE_CHECKING:
     import httpx
 
 # Attributes that may contain fetchable URLs.
-URL_ATTRS = ("href", "src", "poster", "data-src", "data-background")
+URL_ATTRS = (
+    "href",
+    "src",
+    "poster",
+    "data-src",
+    "data-background",
+    "data-lazy-src",
+    "data-original",
+    "data-lazy",
+    "data-bg",
+    "data-background-image",
+    "data-image",
+    "data-href",
+    "data-url",
+    "data-video",
+    "data-poster",
+    "data-anim-src",
+    "data-animation",
+)
 SRCSET_ATTRS = ("srcset", "data-srcset")
+TEXT_ATTRS = ("aria-label", "alt", "title", "placeholder")
+_SKIP_TAGS = frozenset({"script", "style", "noscript"})
 
 # Tags treated as HTML pages when crawled.
 PAGE_EXTENSIONS = {".html", ".htm", ".xhtml", ""}
@@ -43,14 +63,44 @@ ASSET_EXTENSIONS = {
 
 SKIP_SCHEMES = {"mailto", "tel", "javascript", "data", "blob", "about", "file"}
 
-_NOT_FOUND_TEXT = re.compile(
-    r"\b404\b|not\s+found|page\s+not\s+found|page\s+cannot\s+be\s+found",
-    re.IGNORECASE,
-)
+_404_MARKER = re.compile(r"404", re.IGNORECASE)
+
+
+def extract_page_text(html: str) -> str:
+    """Collect visible and semantic text from an HTML document."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    parts: list[str] = []
+
+    if soup.title:
+        parts.append(soup.title.get_text(" ", strip=True))
+
+    for meta in soup.find_all("meta"):
+        content = meta.get("content")
+        if content:
+            parts.append(str(content))
+
+    for tag in soup.find_all(True):
+        for attr in TEXT_ATTRS:
+            value = tag.get(attr)
+            if value:
+                parts.append(str(value))
+
+    for skip_tag in list(soup.find_all(_SKIP_TAGS)):
+        skip_tag.decompose()
+
+    parts.append(soup.get_text(" ", strip=True))
+    return " ".join(part for part in parts if part)
+
+
+def page_mentions_404(text: str) -> bool:
+    """Return True when page text contains a 404 marker."""
+    return bool(_404_MARKER.search(text))
 
 
 def is_not_found_page(response: httpx.Response) -> bool:
-    """Detect hard and soft 404 pages (HTTP 404 or HTML error content with 200 status)."""
+    """Detect hard and soft 404 pages (HTTP 404 or any page text mentioning 404)."""
     if response.status_code == 404:
         return True
     if response.status_code not in {200, 201, 204}:
@@ -62,32 +112,16 @@ def is_not_found_page(response: httpx.Response) -> bool:
         return False
 
     try:
-        text = response.text
+        html = response.text
     except Exception:  # noqa: BLE001
         return False
 
-    from bs4 import BeautifulSoup
-
-    soup = BeautifulSoup(text, "html.parser")
-
-    title = soup.title.get_text(" ", strip=True) if soup.title else ""
-    if title and _NOT_FOUND_TEXT.search(title):
+    if page_mentions_404(extract_page_text(html)):
         return True
 
-    for tag_name in ("h1", "h2"):
-        heading = soup.find(tag_name)
-        if heading:
-            heading_text = heading.get_text(" ", strip=True)
-            if heading_text and _NOT_FOUND_TEXT.search(heading_text):
-                return True
-
-    body = soup.body
-    if body:
-        body_text = body.get_text(" ", strip=True)
-        if body_text and len(body_text) < 500 and _NOT_FOUND_TEXT.search(body_text):
-            return True
-
-    return False
+    stripped = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", html)
+    stripped = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", stripped)
+    return page_mentions_404(stripped)
 
 
 def normalize_url(url: str, base: str | None = None) -> str | None:
@@ -184,6 +218,20 @@ def parse_srcset(value: str) -> list[str]:
         piece = part.strip().split()
         if piece:
             urls.append(piece[0])
+    return urls
+
+
+def extract_css_urls(css: str, base_url: str) -> set[str]:
+    """Extract linked asset URLs from CSS, including @import rules."""
+    urls: set[str] = set()
+    for match in re.findall(r"url\(([^)]+)\)", css):
+        absolute = normalize_url(match.strip("'\""), base_url)
+        if absolute:
+            urls.add(absolute)
+    for match in re.findall(r"@import\s+(?:url\()?['\"]?([^'\")\s;]+)", css):
+        absolute = normalize_url(match.strip("'\""), base_url)
+        if absolute:
+            urls.add(absolute)
     return urls
 
 

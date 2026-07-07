@@ -20,6 +20,7 @@ from snapshot.manifest import MANIFEST_NAME, SnapshotManifest
 from snapshot.utils import (
     SRCSET_ATTRS,
     URL_ATTRS,
+    extract_css_urls,
     is_not_found_page,
     normalize_url,
     page_local_path,
@@ -419,12 +420,15 @@ class SnapshotEngine:
                         absolute = normalize_url(piece, page_url)
                         if absolute and not self._is_page_url(absolute):
                             urls.add(absolute)
-        for style in soup.find_all("style"):
-            if style.string:
-                for match in re.findall(r"url\(([^)]+)\)", style.string):
+            style = tag.get("style")
+            if style:
+                for match in re.findall(r"url\(([^)]+)\)", style):
                     absolute = normalize_url(match.strip("'\""), page_url)
                     if absolute and not self._is_page_url(absolute):
                         urls.add(absolute)
+        for style in soup.find_all("style"):
+            if style.string:
+                urls.update(extract_css_urls(style.string, page_url))
         return urls
 
     def _collect_page_links(self, soup: BeautifulSoup, page_url: str) -> list[str]:
@@ -466,7 +470,7 @@ class SnapshotEngine:
                     lambda asset_url: self._css_mapper(asset_url, local_path),
                 )
                 local_path.write_text(css, encoding="utf-8")
-                nested = self._extract_css_urls(css, url)
+                nested = extract_css_urls(css, url)
                 await asyncio.gather(*(self._download_asset(u) for u in nested))
             else:
                 local_path.write_bytes(response.content)
@@ -479,14 +483,6 @@ class SnapshotEngine:
             target = url_to_local_path(asset_url, self.output_dir)
             self._url_to_path[asset_url] = target
         return relative_href(css_path, target)
-
-    def _extract_css_urls(self, css: str, base_url: str) -> set[str]:
-        urls: set[str] = set()
-        for match in re.findall(r"url\(([^)]+)\)", css):
-            absolute = normalize_url(match.strip("'\""), base_url)
-            if absolute:
-                urls.add(absolute)
-        return urls
 
     def _rewrite_html(self, soup: BeautifulSoup, page_url: str, page_path: Path) -> None:
         for tag in soup.find_all(True):
@@ -533,6 +529,8 @@ class SnapshotEngine:
     def _render_page(self, soup: BeautifulSoup) -> str:
         if self.options.lang == "md":
             return self._html_to_markdown(soup)
+        if not soup.find("html"):
+            return f"<!DOCTYPE html>\n{str(soup)}"
         return str(soup)
 
     def _html_to_markdown(self, soup: BeautifulSoup) -> str:
