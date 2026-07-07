@@ -16,7 +16,7 @@ Then run:
 snapshot https://example.com ./mirror
 ```
 
-**Command generator:** [codingsushi79.github.io/Snapshot](https://codingsushi79.github.io/Snapshot/)
+**Command generator:** [snapshot.sushii.dev](https://snapshot.sushii.dev/)
 
 ## Usage
 
