@@ -5,7 +5,11 @@ import mimetypes
 import os
 import re
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
 from urllib.parse import urljoin, urlparse, urlunparse
+
+if TYPE_CHECKING:
+    import httpx
 
 # Attributes that may contain fetchable URLs.
 URL_ATTRS = ("href", "src", "poster", "data-src", "data-background")
@@ -38,6 +42,52 @@ ASSET_EXTENSIONS = {
 }
 
 SKIP_SCHEMES = {"mailto", "tel", "javascript", "data", "blob", "about", "file"}
+
+_NOT_FOUND_TEXT = re.compile(
+    r"\b404\b|not\s+found|page\s+not\s+found|page\s+cannot\s+be\s+found",
+    re.IGNORECASE,
+)
+
+
+def is_not_found_page(response: httpx.Response) -> bool:
+    """Detect hard and soft 404 pages (HTTP 404 or HTML error content with 200 status)."""
+    if response.status_code == 404:
+        return True
+    if response.status_code not in {200, 201, 204}:
+        return False
+
+    content_type = response.headers.get("content-type", "").lower()
+    path = urlparse(str(response.url)).path.lower()
+    if "text/html" not in content_type and not path.endswith((".html", ".htm", ".xhtml")):
+        return False
+
+    try:
+        text = response.text
+    except Exception:  # noqa: BLE001
+        return False
+
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(text, "html.parser")
+
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    if title and _NOT_FOUND_TEXT.search(title):
+        return True
+
+    for tag_name in ("h1", "h2"):
+        heading = soup.find(tag_name)
+        if heading:
+            heading_text = heading.get_text(" ", strip=True)
+            if heading_text and _NOT_FOUND_TEXT.search(heading_text):
+                return True
+
+    body = soup.body
+    if body:
+        body_text = body.get_text(" ", strip=True)
+        if body_text and len(body_text) < 500 and _NOT_FOUND_TEXT.search(body_text):
+            return True
+
+    return False
 
 
 def normalize_url(url: str, base: str | None = None) -> str | None:

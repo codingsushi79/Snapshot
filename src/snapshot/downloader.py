@@ -20,6 +20,7 @@ from snapshot.manifest import MANIFEST_NAME, SnapshotManifest
 from snapshot.utils import (
     SRCSET_ATTRS,
     URL_ATTRS,
+    is_not_found_page,
     normalize_url,
     page_local_path,
     parse_srcset,
@@ -364,6 +365,11 @@ class SnapshotEngine:
             response = await self._fetch(url)
         except Exception as exc:  # noqa: BLE001
             self._errors.append(f"{url}: {exc}")
+            return []
+
+        if is_not_found_page(response):
+            self._pages_skipped += 1
+            self._log(f"skip (404): {url}")
             return []
 
         self._seen_pages.add(url)

@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from snapshot.crawl_policy import RobotsChecker
+from snapshot.utils import is_not_found_page
 
 BUILTIN_WORDLISTS = ("common", "large")
 HIT_STATUS = {200, 201, 204, 301, 302, 307, 308, 401, 403}
@@ -161,9 +162,13 @@ async def _probe_url(client: httpx.AsyncClient, url: str) -> bool:
             response = await client.request(method, url, follow_redirects=False)
         except httpx.RequestError:
             return False
-        if response.status_code in HIT_STATUS:
-            return True
-        if response.status_code == 405 and method == "HEAD":
+        if response.status_code not in HIT_STATUS:
+            if response.status_code == 405 and method == "HEAD":
+                continue
+            return False
+        if method == "HEAD":
             continue
-        return False
+        if is_not_found_page(response):
+            return False
+        return True
     return False

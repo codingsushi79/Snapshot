@@ -66,3 +66,30 @@ async def test_crawl_queues_discovered_pages():
 
     assert result.pages_saved >= 2
     assert "https://example.com/about" in engine._seen_pages
+
+
+@pytest.mark.asyncio
+async def test_snapshot_skips_soft_404_page():
+    html = "<html><head><title>404 Not Found</title></head><body><h1>404</h1></body></html>"
+
+    async def fake_fetch(url: str):
+        response = MagicMock()
+        response.status_code = 200
+        response.headers = {"content-type": "text/html"}
+        response.url = url
+        response.text = html
+        response.raise_for_status = MagicMock()
+        return response
+
+    engine = SnapshotEngine(
+        "https://example.com/",
+        Path("/tmp/soft-404-test"),
+        SnapshotOptions(crawl=False, download_assets=False),
+    )
+
+    with patch.object(engine, "_fetch", new=AsyncMock(side_effect=fake_fetch)):
+        result = await engine.run()
+
+    assert result.pages_saved == 0
+    assert result.pages_skipped == 1
+    assert "https://example.com/" not in engine._seen_pages
