@@ -180,6 +180,7 @@ def _build_options(
 )
 @click.option(
     "--sitemap",
+    "use_sitemap",
     is_flag=True,
     help="Seed crawl URLs from sitemap.xml and robots.txt Sitemap directives.",
 )
@@ -198,7 +199,9 @@ def _build_options(
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host for -restore.")
 @click.option("--no-open", is_flag=True, help="Do not open a browser when restoring.")
 @click.version_option(__version__, prog_name="snapshot")
+@click.pass_context
 def main(
+    ctx: click.Context,
     url: str | None,
     output_dir: str | None,
     extra_args: tuple[str, ...],
@@ -245,9 +248,9 @@ def main(
         return
 
     if not url or not output_dir:
-        console.print("[red]Usage:[/red] snapshot [OPTIONS] URL OUTPUT_DIR [extra args]")
-        console.print("       snapshot -restore DIR")
-        raise SystemExit(1)
+        if not url:
+            ctx.fail("Missing argument 'URL'.")
+        ctx.fail("Missing argument 'OUTPUT_DIR'.")
 
     options = _build_options(
         extras,
